@@ -9,19 +9,19 @@
 
 A recharged take at "snake" for the VMU device's firmware, CPU, and LCD frame buffer as an experienced engineer. My first incomplete version from 15 years ago can be found [here](https://github.com/jahan-addison/serpent/tree/throwback).
 
+The CPU in the VMS _(dubbed, "the potato")_ is a customized Sanyo microcontroller which is code compatible with the LC86000 series.
+
 * The microcontroller: https://mc.pp.se/dc/vms/cpu.html
 * The flash memory: https://mc.pp.se/dc/vms/flashmem.html
 * The firmware: https://mc.pp.se/dc/vms/fw.html
 
----
+### Resources
 
-The CPU in the VMS _(dubbed, "the potato")_ is a customized Sanyo microcontroller which is code compatible with the LC86000 series.
-The VMU flash memory contains 128 kilobytes of storage. These are divided into 256 blocks of 512 bytes each. Of these blocks, 200 are available for user files.
-The rest of the blocks contain filesystem information, or are simply not used at all.
-
-I have a fork of Marcus Comstedt's assembler that can be found [here](https://github.com/jahan-addison/aslc86k-mc).
+* My fork of Comstedt's VMS assembler https://github.com/jahan-addison/aslc86k-mc
+* My fork of Comstedt's VMS emulator https://github.com/jahan-addison/softvms-mc
 
 ## Build
+
 
 ### Requirements
 
@@ -40,13 +40,6 @@ cmake --build build
 ```
 
 The game compiles to `build/serpent.vms`.
-
-# Resources
-
-* VMS software: https://mc.pp.se/dc/sw.html
-* VMS hardware: https://mc.pp.se/dc/hw.html
-* Extras: https://www.deco.franken.de/myfiles/myfiles.html
-
 
 # License
 
