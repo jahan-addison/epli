@@ -26,7 +26,7 @@ The CPU in the VMS _(dubbed, "the potato")_ is a customized Sanyo microcontrolle
 ### Requirements
 
 - CMake ≥ 3.16
-- bison and flex (required by the assembler)
+- Flex and Bison (required by the assembler)
 - The `external/as` submodule initialized:
   ```sh
   git submodule update --init

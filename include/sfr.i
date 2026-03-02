@@ -1,7 +1,9 @@
 
+***********************************
+* Register address mappings
 *
-* Register addresses mappings
-*
+* https://mc.pp.se/dc/vms/sfr.html
+***********************************
 
 ACC	EQU	$100
 PSW	EQU	$101

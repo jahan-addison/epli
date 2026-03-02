@@ -27,7 +27,10 @@
   .include "sfr.i"
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; Bank 1 General Purpose Address Space
+  ;; General Purpose Address Space
+  ;;
+  ;; @R0 and @R1 will always access the RAM half
+  ;; @R2 and @R3 will always access the SFR half.
   ;;
   ;; 256 addresses ($00–$FF) are available for general-purpose data in bank 1:
   ;;
@@ -40,21 +43,23 @@
   ;; Variables ;;
   ;;;;;;;;;;;;;;;
 
-X = $33   ; horizontal position in frame buffer
-Y = $34   ; vertical position in frame buffer
+piece_ptr_x = $00   ; R0: pointer to active piece's x coordinates
+piece_ptr_y = $01   ; R1: pointer to active piece's y coordinates
 
-direction = $30   ; movement direction (0 = horizontal, 1 = vertical)
-serpent_size = $31  ; size of serpent, set to 0 at game start, winning size is 7
+  ;; Serpent state
+
+  ;; Direction values: up = 0, right = 1, down = 2, left = 3
+direction = $30   ; serpent direction
+serpent_size = $31  ; size of serpent, set to 1 at game start, winning size is 7
 serpent_speed = $35   ; speed of serpent, "1" at game start
 
-  ;; The "piece" that the serpent eats
-
-piece_x = $36   ; horizontal position of piece on screen
-piece_y = $37   ; vertical position of piece on screen
-
+  ;; The "food" that the serpent eats
+food_x = $36   ; horizontal position of food on screen
+food_y = $37   ; vertical position of food on screen
 seed = $38    ; random seed
 
   ;; Serpent's tail coordinate addresses
+serpent_piece = $48    ; the current serpent piece being updated, set to 1 at start
 
 serpent_x1 = $39
 serpent_y1 = $3A
@@ -62,14 +67,14 @@ serpent_x2 = $3B
 serpent_y2 = $3C
 serpent_x3 = $3D
 serpent_y3 = $3E
-serpent_x4 = $40
-serpent_y4 = $41
-serpent_x5 = $42
-serpent_y5 = $43
-serpent_x6 = $44
-serpent_y6 = $45
-serpent_x7 = $46
-serpent_y7 = $47
+serpent_x4 = $3F
+serpent_y4 = $40
+serpent_x5 = $41
+serpent_y5 = $42
+serpent_x6 = $43
+serpent_y6 = $44
+serpent_x7 = $45
+serpent_y7 = $46
 
 
   ;; Reset and interrupt vectors
@@ -230,80 +235,162 @@ goodbye:
 	.byte	$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 
- ;
- ;; Start of program
- ;
+  ;;;;;;;;;;;;;;;;;;;;;;
+  ;; Start of program ;;
+  ;;;;;;;;;;;;;;;;;;;;;;
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; @TODO
+  ;; A second difficult could be allowing the serpent to wrap around the screen
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 start:
-  ; For any game:
-	clr1 ie,7
-	mov #$a1,ocr
-	mov #$09,mcr
-	mov #$80,vccr
-	clr1 p3int,0
-	clr1 p1,7
-	mov #$ff,p3
+  ;; setup
+	clr1 ie, 7
+	mov #$a1, ocr
+	mov #$09, mcr
+	mov #$80, vccr
+	clr1 p3int, 0
+	clr1 p1, 7
+	mov #$ff, p3
 
   call clrscr
-  mov #0,xbnk       ; ensure we draw into bank 0 (upper screen)
-  mov #3,X
-  mov #$f,Y
+  mov #0, xbnk  ; ensure we draw into bank 0 (upper screen)
+
+  ;; set initial position (debug)
+  mov #3, serpent_x1
+  mov #$f, serpent_y1
   mov #$F8,2
   mov #$1,@R2
 
+  ;; direction values: up = 0, right = 1, down = 2, left = 3
+  ;; set direction, speed, and size
+  mov #1, serpent_size
+  mov #1, serpent_speed
+  mov #1, serpent_piece
+
+  mov #serpent_x1, piece_ptr_x
+  mov #serpent_y1, piece_ptr_y
+
+  mov #0, direction  ; start moving up
+
+.gameloop:
+  ;; piece_ptr_x and piece_ptr_y from serpent_piece
+  ld serpent_piece
+  dec acc
+  add acc             ; acc = (piece - 1) * 2
+  add #serpent_x1
+  st piece_ptr_x      ; @R0 → xN
+  add #1
+  st piece_ptr_y      ; @R1 → yN
+  ld @R0
+  st B                ; B = serpent_xN
+  ld @R1
+  st C                ; C = serpent_yN
+
+  ; get key pressed
 .keypress:
   call getkeys
-  bn acc,4,.keypress
-  bn acc,5,.keypress
-  bn acc,3,.moveright
-  bn acc,2,.moveleft
-  bn acc,1,.movedown
-  bn acc,0,.moveup
-  br .done
+  bn acc,4,.gameloop
+  bn acc,5,.gameloop
+  bn acc,3,.setdirection_right
+  bn acc,2,.setdirection_left
+  bn acc,1,.setdirection_down
+  bn acc,0,.setdirection_up
+
+  ; move in set direction if no keypress
+  ld direction
+  be #0,.moveup
+  be #1,.moveright
+  be #2,.movedown
+  be #3,.moveleft
+
+  .setdirection_right:
+  call setdirection_right
+  br .moveright
+  .setdirection_left:
+  call setdirection_left
+  br .moveleft
+  .setdirection_down:
+  call setdirection_down
+  br .movedown
+  .setdirection_up:
+  call setdirection_up
+  br .moveup
 
   .moveright:
-  call pause
   call moveright
-  call pause
+  call pausehalf
   br .done
   .moveleft:
-  call pause
   call moveleft
-  call pause
+  call pausehalf
   br .done
   .movedown:
-  call pause
   call movedown
-  call pause
+  call pausehalf
   br .done
   .moveup:
-  call pause
   call moveup
-  call pause
+  call pausehalf
   br .done
 
   .done:
-  br .keypress
+  ld B
+  st @R0 ; write x back via piece_ptr_x
+  ld C
+  st @R1 ; write y back via piece_ptr_y
 
+  br .gameloop
 
-; Subroutines.
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; Subroutines
+  ;; @params
+  ;;  1) B register hold the first param
+  ;;  2) C register holds the second param
+  ;;
+  ;;  The stack is used for additional parameters
+  ;;
+  ;; @returns
+  ;;   acc register holds the return value
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+setdirection_up:
+  clr1 ocr,5
+  mov #0,direction
+  set1 ocr,5
+  ret
+
+setdirection_down:
+  clr1 ocr,5
+  mov #2,direction
+  set1 ocr,5
+  ret
+
+setdirection_left:
+  clr1 ocr,5
+  mov #3,direction
+  set1 ocr,5
+  ret
+
+setdirection_right:
+  clr1 ocr,5
+  mov #1,direction
+  set1 ocr,5
+  ret
 
 moveup:
   clr1 ocr,5
-  ld Y
-  ; check if top of buffer
-  be #0,.up
-  ; branch to bank 0 coroutine at 16
-  be #$10,.ubank
-  ; check the lowest-order bit (big-endian) for even to skip
-  bn Y,0,.upskip
-  ; move up
-  .upcont:
-  dec Y
+  ld C
+  be #0,.halt ; top of screen → game over
+  be #$10,.ubank ; row 16: cross from bank 1 to bottom of bank 0
+  bn acc,0,.upeven ; even row (bit 0 clear): gap + row = sub 10
+  ;; odd row: subtract 6 bytes straight to the even row above
+  dec C
   ld @R2
-  push acc
+  push acc ; save pixel data
   mov #0,@R2
-  .upcontt:
   ld 2
   sub #6
   st 2
@@ -311,37 +398,87 @@ moveup:
   st @R2
   br .up
   .ubank:
-  ; save our current state for bank 0
+  ; bank boundary: switch to bank 0, jump to last row
   ld @R2
   push acc
   mov #0,@R2
   mov #0,xbnk
   ld 2
-  ; add by 118 to get the last row position on the new bank
-  add #$76
+  add #$76 ; +118: from bank 1 row 0 addr to bank 0 row 15 addr
   st 2
-  dec Y
+  dec C
   pop acc
   st @R2
-  ; we've moved up, we're done here
   br .up
-  .upskip:
-  dec Y
+  .upeven:
+  ; even row: subtract 4 (gap) + 6 (row) = 10
+  dec C
   ld @R2
-  mov #0,@R2
   push acc
+  mov #0,@R2
   ld 2
-  sub #4
+  sub #$a
   st 2
-  br .upcontt
+  pop acc
+  st @R2
+  br .up
+  .halt:
+  call gameover
   .up:
   set1 ocr,5
   ret
 
 
+movedown:
+  clr1 ocr,5
+  ld C
+  be #$1F,.halt  ; check if bottom of buffer, if so, game over
+  be #$f,.dbank ; branch to bank 1 coroutine at 15
+  bp C,0,.downskip ; check the lowest-order bit (big-endian) for odd to skip
+  ; move down
+  .downcont:
+  inc C
+  ld @R2
+  push acc
+  mov #0,@R2
+  .downfinal:
+  ld 2
+  add #6
+  st 2
+  pop acc
+  st @R2
+  br .down
+  .dbank:
+  ld @R2 ; save our current state for bank 1
+  push acc
+  mov #0,@R2
+  mov #1,xbnk
+  ld 2
+  sub #$76 ; subtract by 118 to get the first row position on the new bank
+  st 2
+  inc C
+  pop acc
+  st @R2
+  ; we've moved down, we're done here
+  br .down
+  .downskip:
+  inc C
+  ld @R2
+  mov #0,@R2
+  push acc
+  ld 2
+  add #4
+  st 2
+  br .downfinal
+  .halt:
+  call gameover
+  .down:
+  set1 ocr,5
+  ret
+
 moveright:
   clr1 ocr,5
-  ld X
+  ld B
   ; check if buffer cannot move right any further
   be #6,.right
   ; when we're on the last, we ensure we move until the most-significant bit
@@ -371,8 +508,8 @@ moveright:
   st @R2
   clr1 psw,7
   bnz .right
-  inc X
-  ld X
+  inc B
+  ld B
   inc 2
   br .right
   .rightfinal:
@@ -380,7 +517,7 @@ moveright:
   bp acc,0,.rightdone
   br .rightcontinue
   .rightdone:
-  inc X
+  inc B
   .right:
   set1 ocr,5
   ret
@@ -388,7 +525,7 @@ moveright:
 
 moveleft:
   clr1 ocr,5
-  ld X
+  ld B
   ; check if buffer cannot move left any further
   be #0,.left
   ; when we're on the last, we ensure we move until the most-significant bit
@@ -396,7 +533,7 @@ moveleft:
   .leftcontinue:
   ; move left
   ld @R2
-  clr1 psw,7        ; clear carry before rotate (matches moveright pattern)
+  clr1 psw,7  ; clear carry before rotate (matches moveright pattern)
   rolc
   ; check the carry flag for overflow of our bit, which
   ; means it's time to move to the preceding byte
@@ -418,87 +555,47 @@ moveleft:
   st @R2
   clr1 psw,7
   bnz .left
-  dec X
-  ld X
+  dec B
+  ld B
   dec 2
   br .left
   .leftfinal:
   ld @R2
   bp acc,7,.leftdone
   br .leftcontinue
+  .halt:
+  call gameover
   .leftdone:
-  dec X
+  dec B
   .left:
   set1 ocr,5
   ret
 
-
-movedown:
-  clr1 ocr,5
-  ld Y
-  ; check if bottom of buffer
-  be #$1F,.down
-  ; branch to bank 1 coroutine at 15
-  be #$f,.dbank
-  ; check the lowest-order bit (big-endian) for odd to skip
-  bp Y,0,.downskip
-  ; move down
-  .downcont:
-  inc Y
-  ld @R2
-  push acc
-  mov #0,@R2
-  .downcontt:
-  ld 2
-  add #6
-  st 2
-  pop acc
-  st @R2
-  br .down
-  .dbank:
-  ; save our current state for bank 1
-  ld @R2
-  push acc
-  mov #0,@R2
-  mov #1,xbnk
-  ld 2
-  ; subtract by 118 to get the first row position on the new bank
-  sub #$76
-  st 2
-  inc Y
-  pop acc
-  st @R2
-  ; we've moved down, we're done here
-  br .down
-  .downskip:
-  inc Y
-  ld @R2
-  mov #0,@R2
-  push acc
-  ld 2
-  add #4
-  st 2
-  br .downcontt
-  .down:
-  set1 ocr,5
-  ret
-
-
 pause:
-  mov #0,b
-  .start:
-  mov #0,t1lc       ; compare = 0: pulse stays high (no beep) while timer runs
-  mov #1,t1lr
-  mov #$48,t1cnt    ; T1LRUN (bit 6) = 1, starts T1L
-  .run:
-  ld t1lr
-  bne #$ff,.run
-  inc b
-  ld b
- ; bne #1,.start
-  mov #0,t1cnt      ; clear all T1 bits, stops T1L (bit 6) and T1H (bit 7)
+  push b
+  push c
+  mov #64,b ; 64 outer x 256 inner x 2-cycle dbnz = 32768 cycles = 1s
+.pouter:
+  mov #0,c ; c=0 → dbnz wraps to 255, giving 256 iterations
+.pinner:
+  dbnz c,.pinner
+  dbnz b,.pouter
+  pop c
+  pop b
   ret
 
+pausehalf:
+  push b
+  push c
+  mov #32,b  ; 32 outer x 256 inner x 2-cycle dbnz = 16384 cycles = 0.5 s
+.phouter:
+  mov #0,c
+.phinner:
+  dbnz c,.phinner
+  dbnz b,.phouter
+  pop c
+  pop b
+  ret
 
 clrscr:
   clr1 ocr,5
@@ -529,7 +626,6 @@ clrscr:
   pop acc
   set1 ocr,5
   ret
-
 
 setscr:
   clr1 ocr,5
@@ -575,15 +671,77 @@ quit:
   jmp goodbye
 
 sleep:
-  bn p3,7,sleep		; wait for SLEEP to be depressed (released)
-  mov #0,vccr		; blank LCD before halting
+  bn p3,7,sleep ; wait for SLEEP to be depressed (released)
+  mov #0,vccr ; blank LCD before halting
 sleepmore:
-  set1 pcon,0		; enter HALT mode
-  bp p7,0,quit		; docked?
-  bp p3,7,sleepmore	; no SLEEP press yet
-  mov #$80,vccr		; re-enable LCD
+  set1 pcon,0 ; enter HALT mode
+  bp p7,0,quit ; docked?
+  bp p3,7,sleepmore ; no SLEEP press yet
+  mov #$80,vccr ; re-enable LCD
 waitsleepup:
   bn p3,7,waitsleepup
   br getkeys
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; Gameover
+  ;;
+  ;; Displays "GAME" on the top row and "OVER" on the bottom row
+  ;; of the LCD, then halts forever (only a power-cycle escapes).
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+gameover:
+  mov #<gameover_screen,trl
+  mov #>gameover_screen,trh
+  call setscr
+.forever:
+  br .forever
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; Gameover Bitmap
+  ;;
+  ;; Bank 0 (display lines 0-15):
+  ;;   Lines 1-7 = "GAME" (5-wide chars at px 10, 17, 24, 31)
+  ;; Bank 1 (display lines 16-31):
+  ;;   Lines 25-31 = "OVER" (same horizontal positions)
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+gameover_screen:
+  ;; bank 0
+  .byte $00,$00,$00,$00,$00,$00  ; line  0  (blank)
+  .byte $00,$1C,$10,$89,$F0,$00  ; line  1  GAME row 0
+  .byte $00,$20,$28,$D9,$00,$00  ; line  2  GAME row 1
+  .byte $00,$2C,$44,$A9,$00,$00  ; line  3  GAME row 2
+  .byte $00,$26,$7C,$89,$E0,$00  ; line  4  GAME row 3
+  .byte $00,$22,$44,$89,$00,$00  ; line  5  GAME row 4
+  .byte $00,$22,$44,$89,$00,$00  ; line  6  GAME row 5
+  .byte $00,$1C,$44,$89,$F0,$00  ; line  7  GAME row 6
+  .byte $00,$00,$00,$00,$00,$00  ; line  8  (blank)
+  .byte $00,$00,$00,$00,$00,$00  ; line  9
+  .byte $00,$00,$00,$00,$00,$00  ; line 10
+  .byte $00,$00,$00,$00,$00,$00  ; line 11
+  .byte $00,$00,$00,$00,$00,$00  ; line 12
+  .byte $00,$00,$00,$00,$00,$00  ; line 13
+  .byte $00,$00,$00,$00,$00,$00  ; line 14
+  .byte $00,$00,$00,$00,$00,$00  ; line 15
+  ;; bank 1
+  .byte $00,$00,$00,$00,$00,$00  ; line 16  (blank)
+  .byte $00,$00,$00,$00,$00,$00  ; line 17
+  .byte $00,$00,$00,$00,$00,$00  ; line 18
+  .byte $00,$00,$00,$00,$00,$00  ; line 19
+  .byte $00,$00,$00,$00,$00,$00  ; line 20
+  .byte $00,$00,$00,$00,$00,$00  ; line 21
+  .byte $00,$00,$00,$00,$00,$00  ; line 22
+  .byte $00,$00,$00,$00,$00,$00  ; line 23
+  .byte $00,$00,$00,$00,$00,$00  ; line 24
+  .byte $00,$1C,$44,$F9,$E0,$00  ; line 25  OVER row 0
+  .byte $00,$22,$44,$81,$08,$00  ; line 26  OVER row 1
+  .byte $00,$22,$44,$81,$08,$00  ; line 27  OVER row 2
+  .byte $00,$22,$44,$F1,$E0,$00  ; line 28  OVER row 3
+  .byte $00,$22,$28,$81,$40,$00  ; line 29  OVER row 4
+  .byte $00,$22,$28,$81,$20,$00  ; line 30  OVER row 5
+  .byte $00,$1C,$10,$F9,$08,$00  ; line 31  OVER row 6
+
 
   .cnop   0,$200          ; pad to an even number of blocks
