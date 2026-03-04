@@ -29,48 +29,46 @@
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; General Purpose Address Space
   ;;
-  ;; @R0 and @R1 will always access the RAM half
-  ;; @R2 and @R3 will always access the SFR half.
+  ;; R0/R1 address the RAM half
+  ;; R2/R3 address the SFR half
   ;;
-  ;; 256 addresses ($00–$FF) are available for general-purpose data in bank 1:
+  ;; Bank 1 provides 256 bytes of general-purpose data ($00-$FF)
+  ;;    $00-$0F double as the indirect register pointer cells
   ;;
-  ;;  $00–$0F: These double as the indirect register pointer cells (@R0–@R3 read
-  ;;    their addresses from here depending on IRBK bits in PSW)
-  ;;  $10–$FF: Orthogonal general purpose address space, 240 bytes
+  ;; $10-$FF are orthogonal general-purpose storage
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  ;;;;;;;;;;;;;;;
-  ;; Variables ;;
-  ;;;;;;;;;;;;;;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; Variables
+  ;;
+  ;; Indirect register pointers are in $00-$01
+  ;; Directions: 0=up 1=right 2=down 3=left.
+  ;;
+  ;; All pixel X coordinates are true pixel columns (0-47)
+  ;;    Y coordinates are 0-31.
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  ;;;;;;;;;;;;;;;;;;;
-  ;; Serpent state ;;
-  ;;;;;;;;;;;;;;;;;;;
+piece_ptr_x = $00
+piece_ptr_y = $01
 
-piece_ptr_x = $00   ; R0: pointer to active piece's x coordinates
-piece_ptr_y = $01   ; R1: pointer to active piece's y coordinates
+direction    = $30
+serpent_size = $31
+serpent_speed = $35
 
-  ;; Direction values: up = 0, right = 1, down = 2, left = 3
-direction = $30       ; serpent direction
-serpent_size = $31    ; size of serpent, set to 1 at game start, winning size is 7
-serpent_speed = $35   ; speed of serpent, "1" at game start
+food_x     = $36
+food_y     = $37
+food_reset = $4F
+seed       = $38
 
-  ;; The "food" that the serpent eats
-food_x = $36          ; horizontal position of food on screen
-food_y = $37          ; vertical position of food on screen
-food_reset = $4F      ; flag to indicate if food needs to be placed, set to 0 at start
-seed = $38            ; random seed
+pixel_mask_val = $47
+pixel_byte_col = $49
+pixel_shift    = $4A
 
-  ;; Tail rendering state
-trail_pv   = $47    ; pixel value at old head position, saved before each move
-trail_r2lo = $49    ; R2 address byte of old head position, saved before each move
-trail_bank = $4A    ; xbnk at old head position, saved before each move
-tail_x     = $4B    ; byte column of old tail tip, saved before the coord shift
-tail_y     = $4C    ; row of old tail tip, saved before the coord shift
-shift_i    = $4D    ; descending loop counter used by `shift_trail`
+tail_x    = $4B
+tail_y    = $4C
+shift_i   = $4D
 
-  ;; Serpent's tail coordinate addresses
-serpent_piece = $48    ; the current serpent piece being updated, set to 1 at start
+serpent_piece = $48
 
 serpent_x1 = $39
 serpent_y1 = $3A
@@ -157,28 +155,22 @@ goodbye:
 	jmpf	goodbye
 
 
-  ;;;;;;;;;;;;
-  ;; Header ;;
-  ;;;;;;;;;;;;
+  ;;;;;;;;;;;;;;;;;;;;;
+  ;; VMS file header ;;
+  ;;;;;;;;;;;;;;;;;;;;;
 
   .org    $200
   .byte	"Serpent         "
   .byte	"Snake on the VMS - Jahan Addison"
 
-	;; Icon header
-
 	.org	$240
 
-	.word	2,10		; Two frames
-
-	;; Icon palette
+	.word	2,10
 
 	.org	$260
 
 	.word	$0000, $fcfc, $f0a0, $f0f0, $fccf, $f00a, $f00f, $ffff
 	.word	$ffff, $ffff, $ffff, $ffff, $ffff, $ffff, $ffff, $ffff
-
-	;; Icon
 
 	.org	$280
 
@@ -249,20 +241,11 @@ goodbye:
 	.byte	$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 
-  ;;;;;;;;;;;;;;;;;;;;;;
-  ;; Start of program ;;
-  ;;;;;;;;;;;;;;;;;;;;;;
-
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; @TODO
-  ;; A second difficult could be allowing the serpent to wrap around the screen
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
+  ;;;;;;;;;;;;;;;;
+  ;; Game Start ;;
+  ;;;;;;;;;;;;;;;;
 
 start:
-  ;;;;;;;;;;;
-  ;; setup ;;
-  ;;;;;;;;;;;
 	clr1 ie, 7
 	mov #$a1, ocr
 	mov #$09, mcr
@@ -272,24 +255,21 @@ start:
 	mov #$ff, p3
 
   call clrscr
-  mov #0, xbnk  ; ensure we draw into bank 0 (upper screen)
+  mov #0, xbnk
 
-  ;; set random seed
-	clr1 psw,1  ; get random seed from current minute and
-	ld $1c  ; second system variables
+	clr1 psw,1
+	ld $1c
 	xor $1d
 	set1 psw,1
 	st seed
 
-  ;; set initial state
-  mov #3, serpent_x1
+  mov #31, serpent_x1
   mov #$f, serpent_y1
   mov #0, food_reset
-  mov #$F8,2
-  mov #$1,@R2
+  mov #31, B
+  mov #15, C
+  call pixel_draw
 
-  ;; direction values: up = 0, right = 1, down = 2, left = 3
-  ;; set direction, speed, and size
   mov #1, serpent_size
   mov #1, serpent_speed
   mov #1, serpent_piece
@@ -297,83 +277,84 @@ start:
   mov #serpent_x1, piece_ptr_x
   mov #serpent_y1, piece_ptr_y
 
-  mov #0, direction  ; set initial direction (up)
+  mov #0, direction
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; set_serpent_food
+  ;;
+  ;; Place food at a random pixel X (8-39) and Y (4-27), and clear of all edges.
+  ;;
+  ;; Set food_reset to 1 after drawing.
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 .set_serpent_food:
   clr1 ocr,5
-  push 2
-  push xbnk
 
-  ;; random byte column 1-4 (pixels 8-40, 8px clear of each edge)
   call random
-  and #$3             ; 0-3
-  add #1              ; 1-4
+  and #$1f
+  add #8
   st food_x
 
-  ;; random row 4-27 (4 rows clear of top and bottom edges)
   call random
-  and #$17            ; 0-23 (max of 0x17 = 23)
-  add #4              ; 4-27
+  and #$17
+  add #4
   st food_y
 
-  ;; select bank: bit 4 set = rows 16-31 = bank 1
+  push b
+  push c
+  push 2
+  push xbnk
+  ld food_x
+  st B
   ld food_y
-  bn acc,4,.fbank0
-  mov #1,xbnk
-  sub #16             ; normalize to 0-15 for address
-  br .faddr
-  .fbank0:
-  mov #0,xbnk         ; acc = food_y (already 0-15)
-
-  .faddr:
-  ;; acc = row (0-15)
-  ;; addr_lo = $80 + (row & $E)*8 + (row & 1)*6 + food_x
-  push acc            ; save row
-  and #$E             ; pair*2 (clear bit 0)
-  clr1 psw,7          ; clear carry before shifts
-  rol                 ; pair*4
-  rol                 ; pair*8
-  rol                 ; pair*16
-  add #$80            ; add XRAM low-byte base
-  st 2                ; store even-row base into R2
-  pop acc             ; restore row
-  bn acc,0,.feven     ; bit 0 clear = even row, skip
-  ld 2
-  add #6
-  st 2
-  .feven:
-  ld 2
-  add food_x
-  st 2                ; R2 = XRAM address of food byte
-  mov #$80,@R2        ; draw food pixel (MSB = leftmost pixel of byte)
-
+  st C
+  call pixel_draw
   pop xbnk
   pop 2
+  pop c
+  pop b
+
   set1 ocr,5
   mov #1, food_reset
 
-  ;;;;;;;;;;;;;;;;
-  ;; Game Start ;;
-  ;;;;;;;;;;;;;;;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; Do we have a winner? ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ld serpent_size
+  be #7, .gameover
+  br .gameloop
+  .gameover:
+  call gameover
 
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; gameloop
+  ;;
+  ;; Reload head coords into B, C registers; respawn food if needed, then read keys.
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 .gameloop:
-  ;; set piece_ptr_x and piece_ptr_y from serpent_piece
   ld serpent_piece
   dec acc
-  add acc             ; acc = (piece - 1) * 2
+  add acc
   add #serpent_x1
-  st piece_ptr_x      ; @R0 → xN
+  st piece_ptr_x
   add #1
-  st piece_ptr_y      ; @R1 → yN
+  st piece_ptr_y
   ld @R0
-  st B                ; B = serpent_xN
+  st B
   ld @R1
-  st C                ; C = serpent_yN
+  st C
+
+  ld serpent_size
+  be #7, .gameover
 
   ld food_reset
-  be #0, .set_serpent_food
+  bnz .keypress
+  jmpf .set_serpent_food
 
-  ; get key pressed
+  ;;;;;;;;;;;;;;
+  ;; keypress ;;
+  ;;;;;;;;;;;;;;
+
 .keypress:
   call getkeys
   bn acc,4,.gameloop
@@ -398,16 +379,14 @@ start:
   mov #0, direction
   br .gamemove
 
-.gamemove:
-  ;; save the head's XRAM byte and address before the move subroutine erases it
-  ld 2
-  st trail_r2lo
-  ld xbnk
-  st trail_bank
-  ld @R2
-  st trail_pv
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; gamemove
+  ;;
+  ;; Dispatch to the correct move subroutine, draw the new head pixel, then
+  ;; check for food collection before cascading body coordinates.
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  ;; set direction: 0=up 1=right 2=down 3=left
+.gamemove:
   ld direction
   be #0,.moveup
   be #1,.moveright
@@ -427,40 +406,59 @@ start:
   call moveup
   br .done
 
-  .done:
-  ;; save new head coordinates into `serpent_x1` / `serpent_y1`
-  ld B
-  st @R0
-  ld C
-  st @R1
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; done
+  ;;
+  ;; Draw the new head pixel. The previous head stays "lit" as it becomes piece 2
+  ;; after the coordinate cascade below.
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  ;; food check: xor byte-column then row - both zero means the head
-  ;; occupies the same XRAM byte as the food pixel
-  ld serpent_x1
+  .done:
+  push b
+  push c
+  push 2
+  push xbnk
+  call pixel_draw
+  pop xbnk
+  pop 2
+  pop c
+  pop b
+
+  ld food_reset
+  be #0, .check_trail
+
+  ld B
   xor food_x
   bnz .check_trail
-  ld serpent_y1
+  ld C
   xor food_y
   bnz .check_trail
-  ;; food eaten: grows up to `serpent_size` 7, then re-queue placement next frame
   ld serpent_size
   be #7, .check_trail
   inc serpent_size
+  ld serpent_size
+  st shift_i
   mov #0, food_reset
-  ;; cascade trail coords so the new piece 2 gets the old head slot;
-  ;; skip only the tail-erase, not the shift
+  mov #$FF, food_x
+  mov #$FF, food_y
   jmpf .trail_shift
 
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; check_trail
+  ;;
+  ;; Erase the tail-tip pixel and load tail coords for the cascade. At size 1 the
+  ;; tail is the head, so the index math yields piece_ptr_x = &x[1] as expected.
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
   .check_trail:
-  ;; erase the old tail-tip pixel before cascading coordinates toward the back
   ld serpent_size
-  be #1, .trail_shift       ; size 1 has no trailing pixels to manage
-  dec acc                   ; size - 1
-  add acc                   ; (size - 1) * 2
+  st shift_i
+  dec acc
+  add acc
   add #serpent_x1
-  st piece_ptr_x            ; R0 → x[serpent_size]
+  st piece_ptr_x
   add #1
-  st piece_ptr_y            ; R1 → y[serpent_size]
+  st piece_ptr_y
   ld @R0
   st tail_x
   ld @R1
@@ -473,30 +471,25 @@ start:
   st B
   ld tail_y
   st C
-  call pixel_addr           ; set R2 and xbnk to old tail tip's XRAM byte
-  mov #0, @R2               ; erase old tail tip
+  call pixel_erase
   pop xbnk
   pop 2
   pop c
   pop b
 
-  .trail_shift:
-  call shift_trail          ; cascade piece[i] = piece[i-1] from size down to 2
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; trail_shift
+  ;;
+  ;; Cascade body coordinates tail-ward, then commit the new head into x1/y1.
+  ;; Piece 2 is already lit from the pixel_draw above; no redraw needed.
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  .trail_redraw:
-  ;; re-draw piece 2 at the old head position: the move subroutine erased that byte
-  ld serpent_size
-  be #1, .trail_done
-  push 2
-  push xbnk
-  ld trail_bank
-  st xbnk
-  ld trail_r2lo
-  st 2
-  ld trail_pv
-  st @R2
-  pop xbnk
-  pop 2
+  .trail_shift:
+  call shift_trail
+  ld B
+  st serpent_x1
+  ld C
+  st serpent_y1
 
   .trail_done:
   call waitkeys
@@ -526,65 +519,145 @@ pixel_addr:
   .pa_bank0:
   mov #0,xbnk
   .pa_row:
-  push acc              ; save row (0-15)
-  and #$E               ; row-pair  index: (row & ~1)
+  push acc
+  and #$E
   clr1 psw,7
-  rol                   ; * 2
-  rol                   ; * 4
-  rol                   ; * 8 = byte offset within bank
-  add #$80              ; XRAM bank base
+  rol
+  rol
+  rol
+  add #$80
   st 2
-  pop acc               ; restore row
+  pop acc
   bn acc,0,.pa_even
   ld 2
-  add #6                ; odd row: 6 bytes past the even row base
+  add #6
   st 2
   .pa_even:
   ld 2
-  add B                 ; add byte column
+  add B
   st 2
+  pop acc
+  ret
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; pixel_draw
+  ;;
+  ;; Light a single pixel at pixel X (0-47) / row (0-31). Derives byte_col =
+  ;; B >> 3 and bit mask = $80 >> (B & 7), then ORs the mask into the XRAM byte
+  ;; located by pixel_addr. Clobbers B (set to byte_col on exit).
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+pixel_draw:
+  push acc
+  ld B
+  clr1 psw,7
+  rorc
+  clr1 psw,7
+  rorc
+  clr1 psw,7
+  rorc
+  and #$3f
+  st pixel_byte_col
+  ld B
+  and #7
+  st pixel_shift
+  mov #$80, pixel_mask_val
+.pdm:
+  ld pixel_shift
+  be #0, .pdd
+  ld pixel_mask_val
+  clr1 psw,7
+  rorc
+  st pixel_mask_val
+  dec pixel_shift
+  br .pdm
+.pdd:
+  ld pixel_byte_col
+  st B
+  call pixel_addr
+  ld @R2
+  or pixel_mask_val
+  st @R2
+  pop acc
+  ret
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; pixel_erase
+  ;;
+  ;; Dark a single pixel at pixel X (0-47) / row (0-31). Identical setup to
+  ;; pixel_draw, but XORs the mask with $FF and ANDs rather than ORs.
+  ;; Clobbers B (set to byte_col on exit).
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+pixel_erase:
+  push acc
+  ld B
+  clr1 psw,7
+  rorc
+  clr1 psw,7
+  rorc
+  clr1 psw,7
+  rorc
+  and #$3f
+  st pixel_byte_col
+  ld B
+  and #7
+  st pixel_shift
+  mov #$80, pixel_mask_val
+.pem:
+  ld pixel_shift
+  be #0, .ped
+  ld pixel_mask_val
+  clr1 psw,7
+  rorc
+  st pixel_mask_val
+  dec pixel_shift
+  br .pem
+.ped:
+  ld pixel_mask_val
+  xor #$FF
+  st pixel_mask_val
+  ld pixel_byte_col
+  st B
+  call pixel_addr
+  ld @R2
+  and pixel_mask_val
+  st @R2
   pop acc
   ret
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; shift_trail
   ;;
-  ;; Cascade each piece coordinate toward the tail: piece[i] = piece[i-1]
-  ;; for i descending from `serpent_size` to 2, so piece 2 claims the old head slot.
-  ;;
-  ;; @params  serpent_size = active trail length (1-7)
+  ;; Cascade coordinates tail-ward: piece[i] = piece[i-1] for i descending from
+  ;; shift_i to 2, so piece 2 inherits the old head position. Caller must store
+  ;; the current serpent_size into shift_i before calling.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 shift_trail:
   push b
   push c
   push acc
-  ld serpent_size
-  be #1, .st_done           ; size 1 has no pieces to cascade
-  st shift_i
+  ld shift_i
+  be #1, .st_done
   .st_loop:
   ld shift_i
   be #1, .st_done
-  ;; point R0/R1 at piece[i]: addr = serpent_x1 + (i - 1) * 2
-  dec acc                   ; i - 1
-  add acc                   ; (i - 1) * 2
+  dec acc
+  add acc
   add #serpent_x1
-  st piece_ptr_x            ; R0 = &x[i]
+  st piece_ptr_x
   add #1
-  st piece_ptr_y            ; R1 = &y[i]
-  ;; read x[i-1] by stepping R0 back one coord pair (2 bytes)
+  st piece_ptr_y
   dec piece_ptr_x
-  dec piece_ptr_x           ; R0 = &x[i-1]
+  dec piece_ptr_x
   ld @R0
   inc piece_ptr_x
-  inc piece_ptr_x           ; R0 = &x[i]
-  st @R0                    ; x[i] = x[i-1]
-  ;; read y[i-1] by stepping R1 back one coord pair
+  inc piece_ptr_x
+  st @R0
   dec piece_ptr_y
-  dec piece_ptr_y           ; R1 = &y[i-1]
+  dec piece_ptr_y
   ld @R1
   inc piece_ptr_y
-  inc piece_ptr_y           ; R1 = &y[i]
-  st @R1                    ; y[i] = y[i-1]
+  inc piece_ptr_y
+  st @R1
   dec shift_i
   br .st_loop
   .st_done:
@@ -596,17 +669,19 @@ shift_trail:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; waitkeys
   ;;
-  ;; Loop for ~0.5s polling P3 arrow keys every ~16ms, writing direction to RAM
+  ;; Poll P3 for ~0.5s (30 passes of a 256-cycle busy-wait), latching direction
+  ;; on the first arrow press. Returns after the full dwell whether or not a key
+  ;; was pressed, giving the serpent its movement cadence.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 waitkeys:
   push b
   push c
-  mov #30,b           ; 30 polls x ~512 cycles each ~= 0.47 s
+  mov #30,b
 .wkouter:
-  mov #0,c            ; 256-cycle inner busy-wait
+  mov #0,c
 .wkinner:
   dbnz c,.wkinner
-  ld p3               ; sample keys directly -- active low (0 = pressed)
+  ld p3
   bn acc,3,.wkright
   bn acc,2,.wkleft
   bn acc,1,.wkdown
@@ -641,247 +716,55 @@ waitkeys:
   ret
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; moveup
+  ;; move routines
   ;;
-  ;; Move the current serpent pixel one row up in the XRAM frame buffer, crossing
-  ;; the bank boundary from bank 1 to bank 0 when necessary
+  ;; Increment or decrement C (pixel Y) or B (pixel X) by one.
   ;;
-  ;; @params  B = byte column, C = current row (0-31)
-  ;; @returns B = byte column, C = new row
+  ;; Calls gameover if the move would "collide" with LCD screen boundary.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 moveup:
-  clr1 ocr,5
   ld C
-  be #0,.halt ; top of screen → game over
-  be #$10,.ubank ; row 16: cross from bank 1 to bottom of bank 0
-  bn acc,0,.upeven ; even row (bit 0 clear): gap + row = sub 10
-  ;; odd row: subtract 6 bytes straight to the even row above
-  dec C
-  ld @R2
-  push acc ; save pixel data
-  mov #0,@R2
-  ld 2
-  sub #6
-  st 2
-  pop acc
-  st @R2
-  br .up
-  .ubank:
-  ; bank boundary: switch to bank 0, jump to last row
-  ld @R2
-  push acc
-  mov #0,@R2
-  mov #0,xbnk
-  ld 2
-  add #$76 ; +118: from bank 1 row 0 addr to bank 0 row 15 addr
-  st 2
-  dec C
-  pop acc
-  st @R2
-  br .up
-  .upeven:
-  ; even row: subtract 4 (gap) + 6 (row) = 10
-  dec C
-  ld @R2
-  push acc
-  mov #0,@R2
-  ld 2
-  sub #$a
-  st 2
-  pop acc
-  st @R2
-  br .up
-  .halt:
-  call gameover
-  .up:
-  set1 ocr,5
-  ret
-
-
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; movedown
-  ;;
-  ;; Move the active serpent pixel one row down in the XRAM frame buffer, crossing
-  ;; the bank boundary from bank 0 to bank 1 when necessary
-  ;;
-  ;; @params  B = byte column, C = current row (0-31)
-  ;; @returns B = byte column, C = new row
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-movedown:
-  clr1 ocr,5
-  ld C
-  be #$1F,.halt  ; check if bottom of buffer, if so, game over
-  be #$f,.dbank ; branch to bank 1 coroutine at 15
-  bp C,0,.downskip ; check the lowest-order bit (big-endian) for odd to skip
-  ; move down
-  .downcont:
-  inc C
-  ld @R2
-  push acc
-  mov #0,@R2
-  .downfinal:
-  ld 2
-  add #6
-  st 2
-  pop acc
-  st @R2
-  br .down
-  .dbank:
-  ld @R2 ; save our current state for bank 1
-  push acc
-  mov #0,@R2
-  mov #1,xbnk
-  ld 2
-  sub #$76 ; subtract by 118 to get the first row position on the new bank
-  st 2
-  inc C
-  pop acc
-  st @R2
-  ; we've moved down, we're done here
-  br .down
-  .downskip:
-  inc C
-  ld @R2
-  mov #0,@R2
-  push acc
-  ld 2
-  add #4
-  st 2
-  br .downfinal
-  .halt:
-  call gameover
-  .down:
-  set1 ocr,5
-  ret
-
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; moveright
-  ;;
-  ;; Move the active serpent pixel one position right within the current XRAM row,
-  ;; carrying the bit across byte boundaries
-  ;;
-  ;; @params  B = byte column (0-6), C = current row
-  ;; @returns B = new byte column, C = row (unchanged)
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-moveright:
-  clr1 ocr,5
-  ld B
-  ; check if buffer cannot move right any further
-  be #6,.halt
-  ; when we're on the last, we ensure we move until the most-significant bit
-  be #5,.rightfinal
-  .rightcontinue:
-  ; move right
-  ld @R2
-  clr1 psw,7
-  rorc
-  ; check the carry flag for overflow of our bit, which
-  ; means it's time to move to the next byte
-  bp psw,7,.rightnext
-  st @R2
-  br .right
-  .rightnext:
-  ; move right the next byte to prepare to store the most-significant bit of current
-  inc 2
-  ror
-  ld @R2
-  set1 acc,7
-  st @R2
-  ; clear the current most-significant bit. if the byte is
-  ; now clear, we can proceed with the next byte
-  dec 2
-  ld @R2
-  clr1 acc,0
-  st @R2
-  clr1 psw,7
-  bnz .right
-  inc B
-  ld B
-  inc 2
-  br .right
-  .rightfinal:
-  ld @R2
-  bp acc,0,.rightdone
-  br .rightcontinue
-  .halt:
-  call gameover
-  .rightdone:
-  inc B
-  .right:
-  set1 ocr,5
-  ret
-
-
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; moveleft
-  ;;
-  ;; Move the active serpent pixel one position left within the current XRAM row,
-  ;; carrying the bit across byte boundaries
-  ;;
-  ;; @params  B = byte column (0-6), C = current row
-  ;; @returns B = new byte column, C = row (unchanged)
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-moveleft:
-  clr1 ocr,5
-  ld B
-  ; check if buffer cannot move left any further
   be #0,.halt
-  ; when we're on the last, we ensure we move until the most-significant bit
-  be #1,.leftfinal
-  .leftcontinue:
-  ; move left
-  ld @R2
-  clr1 psw,7  ; clear carry before rotate (matches moveright pattern)
-  rolc
-  ; check the carry flag for overflow of our bit, which
-  ; means it's time to move to the preceding byte
-  bp psw,7,.leftnext
-  st @R2
-  br .left
-  .leftnext:
-  ; move left the previous byte to prepare to store the most-significant bit of current
-  dec 2
-  rol
-  ld @R2
-  set1 acc,0
-  st @R2
-  ; clear the current most-significant bit. if the byte is
-  ; now clear, we can proceed with the preceding byte
-  inc 2
-  ld @R2
-  clr1 acc,7
-  st @R2
-  clr1 psw,7
-  bnz .left
-  dec B
-  ld B
-  dec 2
-  br .left
-  .leftfinal:
-  ld @R2
-  bp acc,7,.leftdone
-  br .leftcontinue
+  dec C
+  ret
   .halt:
   call gameover
-  .leftdone:
-  dec B
-  .left:
-  set1 ocr,5
+
+movedown:
+  ld C
+  be #$1f,.halt
+  inc C
   ret
+  .halt:
+  call gameover
+
+moveright:
+  ld B
+  be #47,.halt
+  inc B
+  ret
+  .halt:
+  call gameover
+
+moveleft:
+  ld B
+  be #0,.halt
+  dec B
+  ret
+  .halt:
+  call gameover
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; pause
+  ;; pause routines
   ;;
-  ;; Pause for approximately one second using a software busy-wait loop
-  ;;
-  ;; b x 256 inner x 2-cycle dbnz = 1s
+  ;; Software busy loops of ~1s, ~0.5s, and ~0.25s respectively.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pause:
   push b
   push c
-  mov #64,b ; 64 outer x 256 inner x 2-cycle dbnz = 32768 cycles = 1s
+  mov #64,b
 .pouter:
-  mov #0,c ; c=0 → dbnz wraps to 255, giving 256 iterations
+  mov #0,c
 .pinner:
   dbnz c,.pinner
   dbnz b,.pouter
@@ -889,13 +772,6 @@ pause:
   pop b
   ret
 
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; pausehalf
-  ;;
-  ;; Pause for approximately half a second using a software busy-wait loop
-  ;;
-  ;; b x 256 inner x 2-cycle dbnz = 0.5s
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pausehalf:
   push b
   push c
@@ -909,13 +785,6 @@ pausehalf:
   pop b
   ret
 
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; pausequarter
-  ;;
-  ;; Pause for approximately a quarter second using a software busy-wait loop
-  ;;
-  ;; b x 256 inner x 2-cycle dbnz = 0.25s
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pausequarter:
   push b
   push c
@@ -932,9 +801,7 @@ pausequarter:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; random
   ;;
-  ;; Generate a pseudo-random value in the range 0-255
-  ;;
-  ;; @returns acc = random, seed is updated for next call
+  ;; Pseudo-random byte in acc and updates seed in-place.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 random:
 	push b
@@ -957,7 +824,8 @@ random:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; clrscr
   ;;
-  ;; Zero all bytes in both XRAM banks, clearing the LCD frame buffer
+  ;; Zero every addressable byte in both XRAM banks, clearing the LCD frame buffer.
+  ;; Skips the 4-byte inter-row gaps maintained by the row-pair formula.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 clrscr:
   clr1 ocr,5
@@ -992,10 +860,8 @@ clrscr:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; setscr
   ;;
-  ;; Copy a predefined full-screen image to the screen
-  ;;
-  ;; @params trl = low byte of predefined screen ROM address
-  ;;         trh = high byte of predefined screen ROM address
+  ;; Copy $C0 bytes from ROM (addressed by trl/trh) into both XRAM banks, using
+  ;; the same formula as clrscr. Caller sets trl and trh before the call.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 setscr:
   clr1 ocr,5
@@ -1034,11 +900,8 @@ setscr:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; getkeys
   ;;
-  ;; Read P3, check dock detection and the SLEEP key before returning.
-  ;;
-  ;; Branch to goodbye if docked or MODE is held; enters halt loop on SLEEP
-  ;;
-  ;; @returns acc = raw P3 byte (active-low; caller masks individual bits)
+  ;; Read P3 and return the raw active-low byte. Branches to goodbye if docked or
+  ;; MODE is held; on SLEEP it blanks the LCD, halts, then resumes on wake.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 getkeys:
   bp p7,0,quit
@@ -1050,23 +913,22 @@ quit:
   jmp goodbye
 
 sleep:
-  bn p3,7,sleep ; wait for SLEEP to be depressed (released)
-  mov #0,vccr ; blank LCD before halting
+  bn p3,7,sleep
+  mov #0,vccr
 sleepmore:
-  set1 pcon,0 ; enter HALT mode
-  bp p7,0,quit ; docked?
-  bp p3,7,sleepmore ; no SLEEP press yet
-  mov #$80,vccr ; re-enable LCD
+  set1 pcon,0
+  bp p7,0,quit
+  bp p3,7,sleepmore
+  mov #$80,vccr
 waitsleepup:
   bn p3,7,waitsleepup
   br getkeys
 
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; Gameover
+  ;; gameover
   ;;
-  ;; Display "GAME" on the top row and "OVER" on the bottom row
-  ;; of the LCD, then halt forever (only a power-cycle escapes)
+  ;; Blit the gameover bitmap and spin forever. Only a power-cycle escapes.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 gameover:
@@ -1076,51 +938,39 @@ gameover:
 .forever:
   br .forever
 
-
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; Gameover Bitmap
-  ;;
-  ;; Bank 0 (display lines 0-15):
-  ;;   Lines 1-7 = "GAME" (5-wide chars at px 10, 17, 24, 31)
-  ;; Bank 1 (display lines 16-31):
-  ;;   Lines 25-31 = "OVER" (same horizontal positions)
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 gameover_screen:
-  ;; bank 0
-  .byte $00,$00,$00,$00,$00,$00  ; line  0  (blank)
-  .byte $00,$1C,$10,$89,$F0,$00  ; line  1  GAME row 0
-  .byte $00,$20,$28,$D9,$00,$00  ; line  2  GAME row 1
-  .byte $00,$2C,$44,$A9,$00,$00  ; line  3  GAME row 2
-  .byte $00,$26,$7C,$89,$E0,$00  ; line  4  GAME row 3
-  .byte $00,$22,$44,$89,$00,$00  ; line  5  GAME row 4
-  .byte $00,$22,$44,$89,$00,$00  ; line  6  GAME row 5
-  .byte $00,$1C,$44,$89,$F0,$00  ; line  7  GAME row 6
-  .byte $00,$00,$00,$00,$00,$00  ; line  8  (blank)
-  .byte $00,$00,$00,$00,$00,$00  ; line  9
-  .byte $00,$00,$00,$00,$00,$00  ; line 10
-  .byte $00,$00,$00,$00,$00,$00  ; line 11
-  .byte $00,$00,$00,$00,$00,$00  ; line 12
-  .byte $00,$00,$00,$00,$00,$00  ; line 13
-  .byte $00,$00,$00,$00,$00,$00  ; line 14
-  .byte $00,$00,$00,$00,$00,$00  ; line 15
-  ;; bank 1
-  .byte $00,$00,$00,$00,$00,$00  ; line 16  (blank)
-  .byte $00,$00,$00,$00,$00,$00  ; line 17
-  .byte $00,$00,$00,$00,$00,$00  ; line 18
-  .byte $00,$00,$00,$00,$00,$00  ; line 19
-  .byte $00,$00,$00,$00,$00,$00  ; line 20
-  .byte $00,$00,$00,$00,$00,$00  ; line 21
-  .byte $00,$00,$00,$00,$00,$00  ; line 22
-  .byte $00,$00,$00,$00,$00,$00  ; line 23
-  .byte $00,$00,$00,$00,$00,$00  ; line 24
-  .byte $00,$1C,$44,$F9,$E0,$00  ; line 25  OVER row 0
-  .byte $00,$22,$44,$81,$08,$00  ; line 26  OVER row 1
-  .byte $00,$22,$44,$81,$08,$00  ; line 27  OVER row 2
-  .byte $00,$22,$44,$F1,$E0,$00  ; line 28  OVER row 3
-  .byte $00,$22,$28,$81,$40,$00  ; line 29  OVER row 4
-  .byte $00,$22,$28,$81,$20,$00  ; line 30  OVER row 5
-  .byte $00,$1C,$10,$F9,$08,$00  ; line 31  OVER row 6
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$1C,$10,$89,$F0,$00
+  .byte $00,$20,$28,$D9,$00,$00
+  .byte $00,$2C,$44,$A9,$00,$00
+  .byte $00,$26,$7C,$89,$E0,$00
+  .byte $00,$22,$44,$89,$00,$00
+  .byte $00,$22,$44,$89,$00,$00
+  .byte $00,$1C,$44,$89,$F0,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00
+  .byte $00,$1C,$44,$F9,$E0,$00
+  .byte $00,$22,$44,$81,$08,$00
+  .byte $00,$22,$44,$81,$08,$00
+  .byte $00,$22,$44,$F1,$E0,$00
+  .byte $00,$22,$28,$81,$40,$00
+  .byte $00,$22,$28,$81,$20,$00
+  .byte $00,$1C,$10,$F9,$08,$00
 
 
-  .cnop   0,$200          ; pad to an even number of blocks
+  .cnop   0,$200
