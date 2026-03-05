@@ -5,9 +5,18 @@
    <img src="/docs/screenshot.png">
 </p>
 
+
+<h5 align="center">
+  Quick Install and Play:</b> <code>bash ./play_game.sh</code><br>
+  For Windows (MinGW), MacOS, Linux platforms 🎮
+</h5>
+
+
+---
+
 ### Overview
 
-A recharged take at "snake" for the VMU device's firmware, CPU, and LCD frame buffer as an experienced engineer. My first incomplete version from 15 years ago can be found [here](https://github.com/jahan-addison/serpent/tree/throwback).
+A recharged take at "snake" for the VMU device's firmware, CPU, and LCD frame buffer as an experienced engineer. My first incomplete version from 15 years ago can be found [here](https://github.com/jahan-addison/serpent/tree/original).
 
 The CPU in the VMS _(dubbed, "the potato")_ is a customized Sanyo microcontroller which is code compatible with the LC86000 series.
 

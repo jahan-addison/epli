@@ -35,7 +35,7 @@
   ;; Bank 1 provides 256 bytes of general-purpose data ($00-$FF)
   ;;    $00-$0F double as the indirect register pointer cells
   ;;
-  ;; $10-$FF are orthogonal general-purpose storage
+  ;; $10-$FF is orthogonal general-purpose storage
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -320,6 +320,7 @@ start:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; Do we have a winner? ;;
   ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
   ld serpent_size
   be #7, .gameover
   br .gameloop
@@ -382,7 +383,7 @@ start:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; gamemove
   ;;
-  ;; Dispatch to the correct move subroutine, draw the new head pixel, then
+  ;; Jump to the move subroutine, draw the new head pixel, then
   ;; check for food collection before cascading body coordinates.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -409,7 +410,7 @@ start:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; done
   ;;
-  ;; Draw the new head pixel. The previous head stays "lit" as it becomes piece 2
+  ;; Draw the new head pixel, the previous head stays "lit" as it becomes piece 2
   ;; after the coordinate cascade below.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -584,8 +585,7 @@ pixel_draw:
   ;; pixel_erase
   ;;
   ;; Dark a single pixel at pixel X (0-47) / row (0-31). Identical setup to
-  ;; pixel_draw, but XORs the mask with $FF and ANDs rather than ORs.
-  ;; Clobbers B (set to byte_col on exit).
+  ;; pixel_draw, but XOR's the mask with $FF and ANDs rather than OR's.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pixel_erase:
   push acc
@@ -669,9 +669,8 @@ shift_trail:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; waitkeys
   ;;
-  ;; Poll P3 for ~0.5s (30 passes of a 256-cycle busy-wait), latching direction
-  ;; on the first arrow press. Returns after the full dwell whether or not a key
-  ;; was pressed, giving the serpent its movement cadence.
+  ;; Poll P3 for 0.5s, read direction on the first arrow key. Return after the
+  ;; full wait regardless of key pressed, giving the serpent its "movement."
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 waitkeys:
   push b
@@ -757,7 +756,7 @@ moveleft:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; pause routines
   ;;
-  ;; Software busy loops of ~1s, ~0.5s, and ~0.25s respectively.
+  ;; Software busy-wait loops of ~1s, ~0.5s, and ~0.25s respectively.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 pause:
   push b
@@ -825,7 +824,6 @@ random:
   ;; clrscr
   ;;
   ;; Zero every addressable byte in both XRAM banks, clearing the LCD frame buffer.
-  ;; Skips the 4-byte inter-row gaps maintained by the row-pair formula.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 clrscr:
   clr1 ocr,5
@@ -860,8 +858,7 @@ clrscr:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; setscr
   ;;
-  ;; Copy $C0 bytes from ROM (addressed by trl/trh) into both XRAM banks, using
-  ;; the same formula as clrscr. Caller sets trl and trh before the call.
+  ;; Copy $C0 bytes from ROM (addressed by trl/trh) into both XRAM banks.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 setscr:
   clr1 ocr,5
@@ -900,7 +897,7 @@ setscr:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; getkeys
   ;;
-  ;; Read P3 and return the raw active-low byte. Branches to goodbye if docked or
+  ;; Read P3 and return the active-low byte. Branch to goodbye if docked or
   ;; MODE is held; on SLEEP it blanks the LCD, halts, then resumes on wake.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 getkeys:
@@ -928,7 +925,7 @@ waitsleepup:
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; gameover
   ;;
-  ;; Blit the gameover bitmap and spin forever. Only a power-cycle escapes.
+  ;; Write the gameover bitmap and spin forever. Only a power-cycle escapes.
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 gameover:

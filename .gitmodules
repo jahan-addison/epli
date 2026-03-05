@@ -1,3 +1,6 @@
 [submodule "external/as"]
 	path = external/as
 	url = git@github.com:jahan-addison/comstedt-as.git
+[submodule "external/vms"]
+	path = external/vms
+	url = git@github.com:jahan-addison/softvms-mc
